@@ -1,64 +1,91 @@
-# python3
-import asyncio
-from queue import Queue
-import pickle
+import pyodbc
+import os
 from run_process import StartProcess
+from server import Server
+
+class AutoExchange:
+    def __init__(self, hash_key):
+        self.hash_key = hash_key
+        self.generate_config_file()
+        StartProcess.start(self.get_enterprise_data, self.hash_key)
+
+    def get_enterprise_data(self):
+        conn = pyodbc.connect(
+            'DRIVER={SQL Server};SERVER=HOMEDES001\SQLEXPRESS;DATABASE=autoexchange;UID=d.dikiy;PWD=Rhjyjc2910')
+        cursor = conn.cursor()
+        cursor.execute('{CALL enterprise_info (?)}', self.hash_key)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        print(rows)
+        return rows
+
+    def generate_config_file(self, shared_mode=1):
+        enterprise_data = self.get_enterprise_data()
+        write_to = ''
+        read_from = ''
+        abspath = os.path.abspath(os.curdir)
+        process_status = 1
+        for data in enterprise_data:
+            for i in range(1, 3):
+                if i == 1:
+                    process_status = 1
+                    write_to = 'REK'
+                    read_from = ''
+                elif i == 2:
+                    process_status = 3
+                    write_to = ''
+                    read_from = 'REK'
+                text = \
+                    f'''
+                        [General]
+                        Output={abspath}\\Log\\{process_status}_{self.hash_key}_{data[0]}.log
+                        Quit=1
+                        AutoExchange=1
+                        [AutoExchange]
+                        SharedMode={shared_mode}
+                        WriteTo={write_to}
+                        ReadFrom={read_from}
+                    '''
+                param = f'{abspath}\Conf\{process_status}_{self.hash_key}_{data[0]}.prm'
+                with open(param, mode='w', encoding='utf-8') as file:
+                    file.write(text)
+
+        write_to = ''
+        read_from = ''
+
+        for i in range(len(enterprise_data)):
+            write_to += enterprise_data[i][0] + ','
+            read_from += enterprise_data[i][0] + ','
+        text = \
+            f'''
+                [General]
+                Output={abspath}\\Log\\2_{self.hash_key}_REK.log
+                Quit=1
+                AutoExchange=1
+                [AutoExchange]
+                SharedMode={shared_mode}
+                WriteTo={write_to}
+                ReadFrom={read_from}
+            '''
+        param = f'{abspath}\Conf\\2_{self.hash_key}_REK.prm'
+        with open(param, mode='w', encoding='utf-8') as file:
+            file.write(text)
 
 
+class ServerAutoExchange(Server):
+    def handle(self, message):
+        try:
+            AutoExchange(message)
 
-class MyAsync:
-    async def run_server(self, host, port):
-        self.counter = 0
-        self.queue = Queue()
-        server = await asyncio.start_server(self.serve_client, host, port)
-        task2 = server.serve_forever()
-        task = asyncio.create_task(self.put())
-        await asyncio.gather(task, task2)
-
-    async def serve_client(self, reader, writer):
-        print(writer.get_extra_info('socket'))
-        self.writer = writer
-        self.counter += 1  # Потоко-безопасно, так все выполняется в одном потоке
-        print(f'Client #{self.counter} connected')
-        request = await self.read_request(reader)
-        self.queue.put(request)
-        if request is None:
-            print(f'Client #{self.counter} unexpectedly disconnected')
-        else:
-            await self.write_response(writer)
-
-    async def put(self):
-        while True:
-            if self.queue.empty():
-                pass
-            elif not self.queue.empty():
-                print('ok')
-                #StartProcess.start(self.queue.get())
-                self.close_connect(self.writer)
+        except Exception as e:
+            print("Error: {}".format(e))
 
 
-    def close_connect(self, writer):
-        writer.close()
+if __name__ == "__main__":
+    print("ServerAutoExchange started.")
+    getter = ServerAutoExchange("localhost", 8887)
+    getter.start_server()
+    getter.loop()
+    getter.stop_server()
 
-    async def read_request(self, reader, delimiter=b'.'):
-        request = bytearray()
-        while True:
-            data = await reader.read(100)
-            if not data:
-                break
-            request += data
-            if delimiter in request:
-                print(pickle.loads(request))
-                return pickle.loads(request)
-        return None
-
-    async def write_response(self, writer):
-        response = pickle.dumps('Ок')
-        writer.write(response)
-        await writer.drain()
-        print(f'Client #{self.counter} has been served')
-
-
-if __name__ == '__main__':
-    q = MyAsync()
-    asyncio.run(q.run_server('10.88.2.6', 8888))
