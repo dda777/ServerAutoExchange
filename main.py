@@ -2,26 +2,19 @@ import pyodbc
 import os
 from run_process import StartProcess
 from server import Server
+from database import DataBase
 
 class AutoExchange:
     def __init__(self, hash_key):
+        self.db = DataBase()
         self.hash_key = hash_key
-        self.generate_config_file()
-        StartProcess.start(self.get_enterprise_data, self.hash_key)
+        data = self.db.get_enterprise_data(self.hash_key)
+        self.generate_config_file(self.db.get_enterprise_data(data))
+        self.db.update_status_operation(self.hash_key, 2)
+        self.db.close_connect()
+        StartProcess.start(data, self.hash_key)
 
-    def get_enterprise_data(self):
-        conn = pyodbc.connect(
-            'DRIVER={SQL Server};SERVER=HOMEDES001\SQLEXPRESS;DATABASE=autoexchange;UID=d.dikiy;PWD=Rhjyjc2910')
-        cursor = conn.cursor()
-        cursor.execute('{CALL enterprise_info (?)}', self.hash_key)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        print(rows)
-        return rows
-
-    def generate_config_file(self, shared_mode=1):
-        enterprise_data = self.get_enterprise_data()
+    def generate_config_file(self, enterprise_data, shared_mode=1):
         write_to = ''
         read_from = ''
         abspath = os.path.abspath(os.curdir)

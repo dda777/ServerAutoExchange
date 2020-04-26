@@ -1,6 +1,7 @@
 import multiprocessing
 from subprocess import Popen
 import os
+from database import DataBase
 
 
 class ExchangeQueue(multiprocessing.Process):
@@ -77,3 +78,6 @@ class StartProcess:
                 print('Result:', temp_result)
 
             print('Done.')
+        db = DataBase()
+        db.update_status_operation(hash_key, 3)
+        db.close_connect()
