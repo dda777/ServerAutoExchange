@@ -4,17 +4,21 @@ from run_process import StartProcess
 from server import Server
 from database import DataBase
 
+
 class AutoExchange:
+
     def __init__(self, hash_key):
         self.db = DataBase()
         self.hash_key = hash_key
+
         data = self.db.get_enterprise_data(self.hash_key)
-        self.generate_config_file(self.db.get_enterprise_data(data))
-        self.db.update_status_operation(self.hash_key, 2)
+        shared_mode = self.db.select_shared_mode(self.hash_key)
+        self.generate_config_file(data, shared_mode)
+        self.db.update_operation_table(self.hash_key, 2)
         self.db.close_connect()
         StartProcess.start(data, self.hash_key)
 
-    def generate_config_file(self, enterprise_data, shared_mode=1):
+    def generate_config_file(self, enterprise_data, shared_mode):
         write_to = ''
         read_from = ''
         abspath = os.path.abspath(os.curdir)
@@ -57,7 +61,7 @@ class AutoExchange:
                 Quit=1
                 AutoExchange=1
                 [AutoExchange]
-                SharedMode={shared_mode}
+                SharedMode=1
                 WriteTo={write_to}
                 ReadFrom={read_from}
             '''
@@ -69,16 +73,14 @@ class AutoExchange:
 class ServerAutoExchange(Server):
     def handle(self, message):
         try:
-            AutoExchange(message)
-
+            AutoExchange(message.decode('utf-8'))
         except Exception as e:
             print("Error: {}".format(e))
 
 
 if __name__ == "__main__":
     print("ServerAutoExchange started.")
-    getter = ServerAutoExchange("localhost", 8887)
+    getter = ServerAutoExchange('10.88.2.54', 8887)
     getter.start_server()
     getter.loop()
     getter.stop_server()
-

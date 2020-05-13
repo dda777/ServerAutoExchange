@@ -1,6 +1,6 @@
 import socket
 
-HOST, PORT = "localhost", 8887
+HOST, PORT = "10.88.2.54", 8887
 data = '{"url": "http://ifmo.su"}'
 
 # Create a socket (SOCK_STREAM means a TCP socket)
