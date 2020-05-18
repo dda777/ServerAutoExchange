@@ -1,10 +1,22 @@
-import socket
+import ctypes
+import os
+from subprocess import check_output
 
-HOST, PORT = "10.88.2.54", 8887
-data = '{"url": "http://ifmo.su"}'
 
-# Create a socket (SOCK_STREAM means a TCP socket)
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-    # Connect to server and send data
-    sock.connect((HOST, PORT))
-    sock.sendall(bytes(data + "\n", "utf-8"))
+print(ctypes.windll.kernel32.GetOEMCP())
+script = r'Openfiles /Query /s SRVOCEAN /fo csv  | find /i "db.adm"'
+encoding = os.device_encoding(0)
+text = check_output(script, encoding='866', shell=True)
+text = text.split('\n')
+data = []
+q = []
+for i in text:
+    data += i.split(',')
+for j in range(0, len(data), 4):
+    q.append(data[j].replace('"', ''))
+q.pop()
+for k in q:
+    close = f'Openfiles /Disconnect /s SRVOCEAN /ID {k}'
+    text = check_output(close, encoding='866', shell=True)
+
+print(q)

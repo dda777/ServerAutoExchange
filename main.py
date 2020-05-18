@@ -12,7 +12,8 @@ class AutoExchange:
         self.hash_key = hash_key
 
         data = self.db.get_enterprise_data(self.hash_key)
-        shared_mode = self.db.select_shared_mode(self.hash_key)
+        shared_mode = self.db.select_shared_mode(self.hash_key)[0][0]
+
         self.generate_config_file(data, shared_mode)
         self.db.update_operation_table(self.hash_key, 2)
         self.db.close_connect()
@@ -80,7 +81,7 @@ class ServerAutoExchange(Server):
 
 if __name__ == "__main__":
     print("ServerAutoExchange started.")
-    getter = ServerAutoExchange('10.88.2.54', 8887)
+    getter = ServerAutoExchange('172.16.9.63', 8887)
     getter.start_server()
     getter.loop()
     getter.stop_server()

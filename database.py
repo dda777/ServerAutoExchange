@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import pyodbc
 
 
@@ -74,7 +75,7 @@ class DataBase:
 
     def insert_suboperation_log(self, code1c7, hash_key, status, infotext, prtype):
         cursor = self.connect.cursor()
-        sql = f"EXEC insert_suboperationlog @code1c7={code1c7}, @hashKey='{hash_key}', @status={status}, @infotext={infotext}, @prtype={prtype} "
+        sql = f"EXEC insert_suboperationlog @code1c7='{code1c7}', @hashKey='{hash_key}', @status={status}, @infotext='{infotext}', @prtype={prtype} "
         try:
             cursor.execute(sql)
             cursor.commit()
@@ -85,5 +86,4 @@ class DataBase:
 
     def close_connect(self):
         self.connect.close()
-
 

@@ -37,7 +37,7 @@ class ExchangeProcess:
         abspath = os.path.abspath(os.curdir)
 
         program = f'C:\\User\\db.adm\\1cv77.adm\\BIN\\1cv7s.exe ' \
-                  f'CONFIG /M /D{self.data[1]} /NЮляП /Pцунами ' \
+                  f'CONFIG /M /D{self.data[1]} /NAUTO /Pautoobmen ' \
                   f'/@{abspath}\\Conf\\{self.process_status}_{self.hash_key}_{self.data[0]}.prm'
 
         with Popen(program) as proc:
@@ -59,7 +59,7 @@ class StartProcess:
 
             for item in data:
                 db.update_suboperation_table(hash_key, 2, item[0])
-                db.insert_suboperation_log(item[0], hash_key, 2, 'Start exchange', process_status)
+                db.insert_suboperation_log(item[0], hash_key, 2, 'Start_exchange', process_status)
 
             consumers = [ExchangeQueue(tasks, results) for i in range(n_consumers)]
             for consumer in consumers:
@@ -84,38 +84,128 @@ class StartProcess:
                 results.get()
 
             print('Done ', process_status)
+            error_log_return, fails_log_return = 1, 1
+            if process_status == 2:
+                error_log_return, fails_log_return = check_log(process_status, hash_key, 'REK')
+            else:
+                for item in data:
+                    error_log_return, fails_log_return = check_log(process_status, hash_key, item[0])
+            try:
+                if error_log_return == 0 and fails_log_return == 0:
+                    for item in data:
+                        db.update_suboperation_table(hash_key, 4, item[0])
+                        db.insert_suboperation_log(item[0], hash_key, 4, "Конфигуратор занят", process_status)
+                        db.update_operation_table(hash_key, 4)
+                        data.pop(data.index(item))
+                    return print('Конфиг занят')
 
-            for item in data:
-                log_info = check_log(process_status, hash_key, item[0])
-                if process_status == 2:
-                    break
-                else:
-                    if log_info != 1:
-                        db.update_suboperation_table(hash_key, 4, item[0])
-                        db.insert_suboperation_log(item[0], hash_key, 4, log_info[5], process_status)
-                        db.update_operation_table(hash_key, 4)
-                    elif log_info == 0:
-                        db.update_suboperation_table(hash_key, 4, item[0])
-                        db.insert_suboperation_log(item[0], hash_key, 4, 'Config not exists', process_status)
-                        db.update_operation_table(hash_key, 4)
-                    else:
+                elif error_log_return == 1 and fails_log_return == 1:
+                    for item in data:
                         db.update_suboperation_table(hash_key, 3, item[0])
-                        db.insert_suboperation_log(item[0], hash_key, 3, 'Exchange passed success', process_status)
+                        db.insert_suboperation_log(item[0], hash_key, 3, 'Exchange_passed_success', process_status)
                         db.update_operation_table(hash_key, 3)
+
+                elif error_log_return and fails_log_return:
+                    if process_status == 2:
+                        for item in data:
+                            db.update_suboperation_table(hash_key, 3, item[0])
+                            db.insert_suboperation_log(item[0], hash_key, 3, 'Exchange_passed_success', process_status)
+                            db.update_operation_table(hash_key, 3)
+                    else:
+                        for error in error_log_return:
+                            for item in data:
+                                if item[0] in error[7]:
+                                    db.update_suboperation_table(hash_key, 4, item[0])
+                                    db.insert_suboperation_log(item[0], hash_key, 4, error[7], process_status)
+                                    db.update_operation_table(hash_key, 4)
+                                    data.pop(data.index(item))
+                                    break
+
+                elif error_log_return and fails_log_return == 1:
+                    for error in error_log_return:
+                        for item in data:
+                            if item[0] in error[7]:
+                                db.update_suboperation_table(hash_key, 4, item[0])
+                                db.insert_suboperation_log(item[0], hash_key, 4, error[7], process_status)
+                                db.update_operation_table(hash_key, 4)
+                                data.pop(data.index(item))
+                                break
+
+                elif error_log_return == 1 and fails_log_return:
+                    for error in fails_log_return:
+                        for item in data:
+                            if item[0] in error[7]:
+                                db.update_suboperation_table(hash_key, 4, item[0])
+                                db.insert_suboperation_log(item[0], hash_key, 4, error[5], process_status)
+                                db.update_operation_table(hash_key, 4)
+                                data.pop(data.index(item))
+                                break
+
+            except Exception as er:
+                for item in data:
+                    db.update_suboperation_table(hash_key, 4, item[0])
+                    db.insert_suboperation_log(item[0], hash_key, 4, er, process_status)
+                    db.update_operation_table(hash_key, 4)
+                    data.pop(data.index(item))
+                return
 
         db.close_connect()
 
 
 def check_log(process, hash_key, code_1c):
     file_name = f'Log/{process}_{hash_key}_{code_1c}.log'
-
+    error = ["DistBatchErr", "DistUplErr", "DistDnldErr"]
+    fails = ["DistUplFail", "DistDnldFail"]
+    error_log_return = []
+    fails_log_return = []
     try:
-        with open(file_name) as file_handler:
-            for line in file_handler:
-                if 'DistUplFail' in line:
-                    parser = Word(alphanums + r':\+-./')
-                    grammar = delimitedList(parser, delim=';')
-                    return grammar.parseString(line)
-            return 1
+        with open(file_name) as log:
+            for line in log:
+                for line_phrases in error:
+                    if line_phrases in line:
+                        error_log_return.append(line.split(';'))
+                for line_phrases in fails:
+                    if line_phrases in line:
+                        fails_log_return.append(line.split(';'))
     except IOError:
-        return 0
+        return 0, 0
+    if not error_log_return and not fails_log_return:
+        return 1, 1
+    elif error_log_return and not fails_log_return:
+        return error_log_return, 1
+    elif not error_log_return and fails_log_return:
+        return 1, fails_log_return
+    else:
+        return error_log_return, fails_log_return
+
+#
+# db = DataBase()
+# data = [('GLB', '\\\\SRVGLOBAL\\user\\db.adm\\tr5')]
+# hash_key = '8a23ad63bb0446fc9a630ab5de6912f6'
+# process_status = 2
+# error_log_return, fails_log_return = check_log(2, '8a23ad63bb0446fc9a630ab5de6912f6', 'REK')
+# print(fails_log_return)
+#
+# if error_log_return == 1 and fails_log_return == 1:
+#     for item in data:
+#         db.update_suboperation_table(hash_key, 3, item[0])
+#         db.insert_suboperation_log(item[0], hash_key, 3, 'Exchange_passed_success', process_status)
+#         db.update_operation_table(hash_key, 3)
+#
+# elif error_log_return and fails_log_return:
+#     if process_status == 2:
+#         for item in data:
+#             db.update_suboperation_table(hash_key, 3, item[0])
+#             db.insert_suboperation_log(item[0], hash_key, 3, 'Exchange_passed_success', process_status)
+#             db.update_operation_table(hash_key, 3)
+#     else:
+#         for error in error_log_return:
+#             for item in data:
+#                 if item[0] in error[7]:
+#                     db.update_suboperation_table(hash_key, 4, item[0])
+#                     db.insert_suboperation_log(item[0], hash_key, 4, error[7], process_status)
+#                     db.update_operation_table(hash_key, 4)
+#                     data.pop(data.index(item))
+#                     break
+#
+# db.close_connect()
