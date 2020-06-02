@@ -1,14 +1,15 @@
 import threading
 import socketserver
 
+
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     pass
+
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
     def handle(self):
         data = self.request.recv(1024)
         self.server.queue.add(data)
-
 
 
 class Queue:
@@ -38,4 +39,3 @@ class Queue:
 
     def exists(self):
         return len(self.messages)
-
