@@ -10,9 +10,8 @@ from Module.exclusiveAuto import ExclusiveAuto
 
 class SubProcess1c7(Process, DataBase):
 
-    def __init__(self, task_queue, unique_key):
+    def __init__(self, task_queue):
         super().__init__()
-        # self.conn = DataBase(unique_key)
         self.task_queue = task_queue
 
     def run(self):
@@ -43,7 +42,7 @@ class LaunchProcess:
         if self.check_share_mod() == 0 and self.pr_stage != 'MainExchange':
             db_connect = DataBase(self.unique_key)
             db_info = db_connect.select_enterprise_database_info(self.mag_info['cod1c'])
-            ex_auto = ExclusiveAuto(db_info[2], db_info[1], db_info[0])
+            ex_auto = ExclusiveAuto(db_server=db_info[2], db_name=db_info[1], server_name=db_info[0])
             ex_auto.close_open_process()
             ex_auto.close_sql_connect()
             ex_auto.close_open_files()

@@ -28,18 +28,6 @@ class DataBase:
             enterprise.append({'cod1c': row[0], 'path_to_tr5': row[1]})
         return enterprise
 
-    # OLD
-    # def select_shared_mode(self):
-    #     rows = None
-    #     sql = f"EXEC select_shared_mode @HashKey='{self.hash_key}'"
-    #     try:
-    #         self.cursor.execute(sql)
-    #         rows = self.cursor.fetchall()
-    #     except pyodbc.Error as err:
-    #         print('Error select_shared_mode', err)
-    #
-    #     return rows
-
     def get_enterprise_data_all(self):
         rows = None
         sql = 'SELECT EnterpriseData_Name, EnterpriseData_Tr5Path, EnterpriseData_Code1c7 FROM S_EnterprisesData'
@@ -51,45 +39,18 @@ class DataBase:
 
         return rows
 
-    # OLD
-    # def update_operation_table(self, hash_key, status):
-    #     cursor = self.connect.cursor()
-    #     sql = f"EXEC update_operation_table @HashKey='{hash_key}', @Status={status}"
-    #     try:
-    #         cursor.execute(sql)
-    #         cursor.commit()
-    #     except pyodbc.Error as err:
-    #         print('Error update_operation_table', err)
-    #
-    #     cursor.close()
-
-    # OLD
-    # def update_suboperation_table(self, hash_key, status, code1c7):
-    #     cursor = self.connect.cursor()
-    #     sql = f"EXEC update_suboperation_table @HashKey='{hash_key}', @Status={status}, @Code1c7={code1c7}"
-    #     try:
-    #         cursor.execute(sql)
-    #         cursor.commit()
-    #     except pyodbc.Error as err:
-    #         print('Error update_suboperation_table', err)
-    #
-    #     cursor.close()
-
     def select_enterprise_database_info(self, code1c7):
-        response = []
-        rows = None
+        rows = []
         sql = f"EXEC select_enterprise_database_info @Code1c7={code1c7}"
         try:
             self.cursor.execute(sql)
-            rows = self.cursor.fetchall()
-            for i in rows:
-                response.append(i[0].split('\\')[2])
-                response.append(i[1].strip())
-                response.append(i[2].strip())
-
+            # rows = self.cursor.fetchall()
+            for row in self.cursor.fetchall():
+                for i in row:
+                    rows.append(i)
         except pyodbc.Error as err:
             print('Error update_suboperation_table', err)
-        return response
+        return rows
 
     def insert_suboperations_log(self, mag_info, status='1', infotext='Start Exchange', pr_type='1'):
         for mag in mag_info:
@@ -122,7 +83,3 @@ class DataBase:
     def close(self):
         self.cursor.close()
         self.connect.close()
-
-d = DataBase('123')
-q= d.select_enterprise_database_info('MAY')
-print(q)
