@@ -4,7 +4,7 @@ from subprocess import check_output, CalledProcessError
 
 class ExclusiveAuto:
 
-    def __init__(self, db_name, db_server, server_name, path_close):
+    def __init__(self, db_name, db_server, server_name, path_close= 'db.adm'):
         self.db_name = db_name
         self.db_server = db_server
         self.server_name = server_name
@@ -13,8 +13,7 @@ class ExclusiveAuto:
             self.connect = pyodbc.connect(
                 'DRIVER={SQL Server};'
                 f'SERVER={self.db_server};'
-                f'DATABASE={self.db_name};'
-
+                f'DATABASE=master;'
                 )
         except pyodbc.Error as err:
             print('Error conn', err)
@@ -24,15 +23,30 @@ class ExclusiveAuto:
 
     def close_sql_connect(self):
         cursor = self.connect.cursor()
-        sql = 'SELECT * FROM sys.sysprocesses'
+        get_pid = f'''
+                SELECT spid FROM sys.sysprocesses P
+                JOIN sys.sysdatabases D ON (D.dbid = P.dbid)
+                WHERE D.Name = '{self.db_name}' AND program_name = '1cv7'
+            '''
         try:
-            cursor.execute(sql)
-            reqest = cursor.fetchall()
+            cursor.execute(get_pid)
+            request = []
+            for row in cursor:
+                for i in row:
+                    request.append(i)
         except pyodbc.Error as err:
-            reqest = f'Error get enterprise data, {err}'
+            request = f'Error get pid data, {err}'
+
+        try:
+            for pid in request:
+                kill_pid = f'KILL {pid}'
+                cursor.execute(kill_pid)
+                cursor.commit()
+        except pyodbc.Error as err:
+            request = f'Error with kill_pid, {err}'
 
         cursor.close()
-        return reqest
+        return request
 
     def close_open_files(self):
         data = []
@@ -60,7 +74,7 @@ class ExclusiveAuto:
         return request
 
 
-c = ExclusiveAuto(db_server='srvdb01', db_name='gagarin', server_name='srvzatoka3', path_close='db.adm')
-q = c.close_open_files()
+c = ExclusiveAuto(db_server='srvdb10', db_name='SKLAD_GLOBAL', server_name='srvzatoka3', path_close='db.adm')
+q = c.close_sql_connect()
 print(q)
 del c

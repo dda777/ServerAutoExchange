@@ -1,15 +1,18 @@
+# -*- coding: utf-8 -*-
 from server import Server
 from multiprocessing import Process, JoinableQueue
 from subprocess import Popen
 import os
 from database import DataBase
 from Config.config import PARAMS_1CV7 as _PRM
+from Module.exclusiveAuto import ExclusiveAuto
 
 
-class SubProcess1c7(Process):
+class SubProcess1c7(Process, DataBase):
 
-    def __init__(self, task_queue):
+    def __init__(self, task_queue, unique_key):
         super().__init__()
+        # self.conn = DataBase(unique_key)
         self.task_queue = task_queue
 
     def run(self):
@@ -24,10 +27,8 @@ class SubProcess1c7(Process):
             self.task_queue.task_done()
 
 
-class LaunchProcess(DataBase):
-    def __init__(self, shared_mode, unique_key, mag_info, pr_stage, all_cod1c=None):
-        super().__init__()
-        self.shared_mode = shared_mode
+class LaunchProcess:
+    def __init__(self, unique_key, mag_info, pr_stage, all_cod1c=None):
         self.mag_info = mag_info
         self.all_cod1c = all_cod1c
         self.unique_key = unique_key
@@ -39,22 +40,40 @@ class LaunchProcess(DataBase):
 
     def launch_pr(self):
         self.generate_config_file()
+        if self.check_share_mod() == 0 and self.pr_stage != 'MainExchange':
+            db_connect = DataBase(self.unique_key)
+            db_info = db_connect.select_enterprise_database_info(self.mag_info['cod1c'])
+            ex_auto = ExclusiveAuto(db_info[2], db_info[1], db_info[0])
+            ex_auto.close_open_process()
+            ex_auto.close_sql_connect()
+            ex_auto.close_open_files()
+            db_connect.close()
         _start = _PRM['path_to_1c7'] + _PRM['mode'] + self.mag_info['path_to_tr5'] + _PRM['login'] + _PRM[
             'password'] + '/@' + self.conf
-        print(_start)
+
         with Popen(_start) as pr:
             pr.wait()
+        db_connect = DataBase(self.unique_key)
+        self.check_log(db_connect)
+        db_connect.close()
 
-    def check_log(self):
+    def check_log(self, db_connect):
         beg = ["DistUplBeg", "DistDnldBeg"]
         index_list_beg = []
         index_list_end = []
         try:
-            with open(self.log) as l:
-                exchange_log = l.readlines()
+            with open(self.log) as line:
+                exchange_log = line.readlines()
         except IOError:
-            self.insert_suboperations_log('', self.unique_key, pr_type=self.pr_stage, status=4,
-                                         infotext='������������ �����')
+            if self.pr_stage == 'MainExchange':
+                for cod1c in self.all_cod1c:
+                    db_connect.insert_suboperation_log(cod1c, pr_type=self.pr_stage, status=4,
+                                                       infotext='Конфигуратор занят')
+                return
+            else:
+                db_connect.insert_suboperation_log(self.mag_info['cod1c'], pr_type=self.pr_stage, status=4,
+                                                   infotext='Конфигуратор занят')
+                return
         for item in exchange_log:
             ind = exchange_log.index(item)
             for b in beg:
@@ -68,20 +87,36 @@ class LaunchProcess(DataBase):
         for i in range(len(index_list_end)):
             start = exchange_log[index_list_beg[i]]
             end = exchange_log[index_list_end[i]]
+            log_answer = exchange_log[index_list_end[i] - 1]
+            if self.pr_stage == 'MainExchange' and "DistUplBeg" in start:
+                self.mag_info['cod1c'] = start[74:77]
+            elif self.pr_stage == 'MainExchange' and "DistDnldBeg" in start:
+                self.mag_info['cod1c'] = start[54:57]
             if "DistUplBeg" in start:
                 if 'DistUplFail' in end:
-                    self.insert_suboperation_log(start[74:77], self.unique_key, pr_type=self.pr_stage, status=4,
-                                                 infotext=exchange_log[index_list_end[i] - 1])
+                    db_connect.insert_suboperation_log(self.mag_info['cod1c'], pr_type=self.pr_stage, status=4,
+                                                       infotext=log_answer)
                 else:
-                    self.insert_suboperation_log(start[74:77], self.unique_key, pr_type=self.pr_stage, status=3,
-                                                 infotext=exchange_log[index_list_end[i] - 1])
+                    db_connect.insert_suboperation_log(self.mag_info['cod1c'], pr_type=self.pr_stage, status=3,
+                                                       infotext=end)
             elif 'DistDnldBeg' in start:
                 if 'DistDnldFail' in end:
-                    self.insert_suboperation_log(start[74:77], self.unique_key, pr_type=self.pr_stage, status=4,
-                                                 infotext=exchange_log[index_list_end[i] - 1])
+                    db_connect.insert_suboperation_log(self.mag_info['cod1c'], pr_type=self.pr_stage, status=4,
+                                                       infotext=log_answer)
                 else:
-                    self.insert_suboperation_log(start[74:77], self.unique_key, pr_type=self.pr_stage, status=3,
-                                                 infotext=exchange_log[index_list_end[i] - 1])
+                    db_connect.insert_suboperation_log(self.mag_info['cod1c'], pr_type=self.pr_stage, status=3,
+                                                       infotext=end)
+
+    def check_share_mod(self):
+        if self.pr_stage != 'MainExchange':
+            md_file_mag = f'{self.mag_info["path_to_tr5"]}\\1Cv7.MD'
+            md_file_global = r'\\SRVfiler\user\db.adm\tr5\1Cv7.MD'
+            if md_file_global == md_file_mag:
+                return 1
+            else:
+                return 0
+
+
 
     def generate_config_file(self):
         if self.pr_stage == 'LoadToMain':
@@ -100,7 +135,7 @@ class LaunchProcess(DataBase):
                 Quit=1
                 AutoExchange=1
                 [AutoExchange]
-                SharedMode={self.shared_mode}
+                SharedMode={self.check_share_mod()}
                 WriteTo={write_to}
                 ReadFrom={read_from}
             '''
@@ -118,11 +153,9 @@ class LaunchProcess(DataBase):
 
 class AutoExchange(DataBase):
     def __init__(self, unique_key):
-        super().__init__()
         self.unique_key = unique_key
-        self.mags_info = self.get_enterprise_data(self.unique_key)
-
-        self.shared_mode = self.select_shared_mode(self.unique_key)[0][0]
+        super().__init__(self.unique_key)
+        self.mags_info = self.get_enterprise_data()
         self.prepare_pr()
 
     def prepare_pr(self):
@@ -137,9 +170,9 @@ class AutoExchange(DataBase):
         }
         for stage in stages:
             print(stage, 'Consumers :', qt_consumers)
-            self.insert_suboperations_log(self.mags_info, self.unique_key, status=2)
+            self.insert_suboperations_log(self.mags_info, status=2, pr_type=stage, infotext=f'Start {stage}')
             tasks = JoinableQueue()
-            consumers = [SubProcess1c7(tasks) for i in range(qt_consumers)]
+            consumers = [SubProcess1c7(tasks, self.unique_key) for i in range(qt_consumers)]
             for consumer in consumers:
                 consumer.start()
             if stage == 'MainExchange':
@@ -147,10 +180,12 @@ class AutoExchange(DataBase):
                     'cod1c': 'REK',
                     'path_to_tr5': r'\\srvfiler\user\db.adm\tr5'
                 }
-                tasks.put(LaunchProcess(self.shared_mode, self.unique_key, mag_info, stage, cods))
+                tasks.put(
+                    LaunchProcess(self.unique_key, mag_info, stage, cods))
             else:
                 for mag_info in self.mags_info:
-                    tasks.put(LaunchProcess(self.shared_mode, self.unique_key, mag_info, stage))
+                    tasks.put(
+                        LaunchProcess(self.unique_key, mag_info, stage))
             tasks.join()
             print(stage, 'Done')
 
